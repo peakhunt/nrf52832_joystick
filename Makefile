@@ -3,7 +3,8 @@ TARGETS          := nrf52832_xxaa
 OUTPUT_DIRECTORY := _build
 
 #SDK_ROOT := ../../nRF5_SDK_12.3.0_d7731ad
-SDK_ROOT := ../nRF5_SDK_15.0.0_a53641a
+#SDK_ROOT := ../nRF5_SDK_15.0.0_a53641a
+SDK_ROOT := /home/hawk/work/nrf/nRF5_SDK_15.0.0_a53641a
 PROJ_DIR := ../nrf52832_joystick
 
 $(OUTPUT_DIRECTORY)/nrf52832_xxaa.out: \
