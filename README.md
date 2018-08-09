@@ -8,7 +8,7 @@ The basc joystick interface board scehmatic can be found [here](https://github.c
 
 The NRF module I used is something called gold core. It's just a cheap chinese NRF52 module.
 
-![Front][captures/front.jpg "front")
-![Back1][captures/back1.jpg "back1")
-![Back2][captures/back1.jpg "back2")
-![Back3][captures/back1.jpg "back3")
+![Front](captures/front.jpg)
+![Back1](captures/back1.jpg)
+![Back2](captures/back1.jpg)
+![Back3](captures/back1.jpg)
