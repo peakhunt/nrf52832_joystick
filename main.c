@@ -50,8 +50,13 @@
 #define PNP_ID_PRODUCT_VERSION          0x0001                                      /**< Product Version. */
 
 /*lint -emacro(524, MIN_CONN_INTERVAL) // Loss of precision */
+#if 0
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(7.5, UNIT_1_25_MS)            /**< Minimum connection interval (7.5 ms). */
 #define MAX_CONN_INTERVAL               MSEC_TO_UNITS(15, UNIT_1_25_MS)             /**< Maximum connection interval (15 ms). */
+#else
+#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(7.5, UNIT_1_25_MS)            /**< Minimum connection interval (7.5 ms). */
+#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(10, UNIT_1_25_MS)              /**< Maximum connection interval (15 ms). */
+#endif
 #define SLAVE_LATENCY                   20                                          /**< Slave latency. */
 #define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(3000, UNIT_10_MS)             /**< Connection supervisory timeout (3000 ms). */
 
@@ -789,6 +794,7 @@ ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
     break;
 
   default:
+    NRF_LOG_DEBUG("hit the default case.");
     // No implementation needed.
     break;
   }

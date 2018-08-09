@@ -5,6 +5,7 @@
 #include "nrf.h"
 #include "nrf_soc.h"
 #include "nrf_log.h"
+#include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
 #include "app_error.h"
 #include "boards.h"
@@ -74,6 +75,8 @@ BLE_HIDS_DEF(m_hids,
 
 APP_TIMER_DEF(m_jstick_timer_id);
 
+static bool   m_in_boot_mode = false;
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // HID event handler
@@ -85,16 +88,33 @@ on_joystick_hids_evt(ble_hids_t * p_hids, ble_hids_evt_t * p_evt)
   switch (p_evt->evt_type)
   {
   case BLE_HIDS_EVT_BOOT_MODE_ENTERED:
+    NRF_LOG_INFO("entrrering boot mode\r\n");
+    m_in_boot_mode = true;
     break;
 
   case BLE_HIDS_EVT_REPORT_MODE_ENTERED:
+    NRF_LOG_INFO("entrrering report mode\r\n");
+    m_in_boot_mode = false;
     break;
 
   case BLE_HIDS_EVT_NOTIF_ENABLED:
+    NRF_LOG_INFO("BLE_HIDS_EVT_NOTIF_ENABLED\r\n");
+    break;
+
+  case BLE_HIDS_EVT_NOTIF_DISABLED:
+    NRF_LOG_INFO("BLE_HIDS_EVT_NOTIF_DISABLED\r\n");
+    break;
+
+  case BLE_HIDS_EVT_REPORT_READ:
+    NRF_LOG_INFO("BLE_HIDS_EVT_REPORT_READ\r\n");
+    break;
+
+  case BLE_HIDS_EVT_REP_CHAR_WRITE:
+    NRF_LOG_INFO("BLE_HIDS_EVT_REP_CHAR_WRITE\r\n");
     break;
 
   default:
-    // No implementation needed.
+    NRF_LOG_INFO("BLE_HIDS_EVT %d\r\n", p_evt->evt_type);
     break;
   }
 }
@@ -155,6 +175,11 @@ ble_joystick_report(void)
   buf[1] = y;
   buf[2] = buttons;
 
+  if(m_in_boot_mode)
+  {
+    return;
+  }
+
   if(buf[0] != prev_buf[0] ||
      buf[1] != prev_buf[1] ||
      buf[2] != prev_buf[2])
@@ -168,6 +193,22 @@ ble_joystick_report(void)
     prev_buf[0] = buf[0];
     prev_buf[1] = buf[1];
     prev_buf[2] = buf[2];
+  }
+
+  if(err_code == NRF_ERROR_RESOURCES)
+  {
+    nrf_delay_ms(1);
+    err_code = ble_hids_inp_rep_send(&m_hids,
+        INPUT_REP_STICK_INDEX,
+        INPUT_REP_STICK_LEN,
+        buf,
+        m_conn_handle);
+
+    if(err_code == NRF_ERROR_RESOURCES)
+    {
+      NRF_LOG_INFO("XXXXXXXXX  err : %x\r\n", err_code);
+      return;
+    }
   }
 
 
@@ -197,14 +238,23 @@ ble_joystick_report(void)
   }
 #endif
 
+#if 0
   if ((err_code != NRF_SUCCESS) &&
       (err_code != NRF_ERROR_INVALID_STATE) &&
+      (err_code != NRF_ERROR_RESOURCES) &&
+      (err_code != NRF_ERROR_BUSY) &&
       (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
      )
   {
     NRF_LOG_INFO("ble_joystick_report err : %x\r\n", err_code);
     //APP_ERROR_HANDLER(err_code);
   }
+#else
+  if (err_code != NRF_SUCCESS)
+  {
+    NRF_LOG_INFO("ble_joystick_report err : %x\r\n", err_code);
+  }
+#endif
 }
 
 static void
@@ -357,7 +407,7 @@ ble_joystick_service_init(void)
   APP_ERROR_CHECK(err_code);
 
   // start
-  app_timer_start(m_jstick_timer_id, APP_TIMER_TICKS(1), NULL);
+  app_timer_start(m_jstick_timer_id, APP_TIMER_TICKS(8), NULL);
 
   // app scheduler is initialized in main.c
 }
