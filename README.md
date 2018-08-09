@@ -10,5 +10,5 @@ The NRF module I used is something called gold core. It's just a cheap chinese N
 
 ![Front](captures/front.jpg)
 ![Back1](captures/back1.jpg)
-![Back2](captures/back1.jpg)
-![Back3](captures/back1.jpg)
+![Back2](captures/back2.jpg)
+![Back3](captures/back3.jpg)
