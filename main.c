@@ -763,6 +763,7 @@ ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
     // LED indication will be changed when advertising starts.
 
     m_conn_handle = BLE_CONN_HANDLE_INVALID;
+    ble_joystick_disconnected();
     break;
 
   case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
@@ -791,6 +792,10 @@ ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
     err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
         BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     APP_ERROR_CHECK(err_code);
+    break;
+
+  case BLE_GATTS_EVT_HVN_TX_COMPLETE:
+    ble_joystick_service_resume_tx();
     break;
 
   default:

@@ -34,6 +34,13 @@
 #define INPUT_REP_STICK_LEN               3
 #define INPUT_REP_STICK_ID                1
 
+#define JOYSTICK_QUEUE_SIZE               32
+
+typedef struct
+{
+  uint8_t     buf[3];
+} joystick_status_t;
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // module privates
@@ -75,7 +82,72 @@ BLE_HIDS_DEF(m_hids,
 
 APP_TIMER_DEF(m_jstick_timer_id);
 
-static bool   m_in_boot_mode = false;
+static joystick_status_t    _queue[JOYSTICK_QUEUE_SIZE];
+static int                  _qbeg,
+                            _qend,
+                            _qsize;
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// circular fifo for queueing
+//
+////////////////////////////////////////////////////////////////////////////////
+static inline void
+joystick_fifo_init(void)
+{
+  _qbeg   = 0;
+  _qend   = 0;
+  _qsize  = 0;
+}
+
+static inline bool
+joystick_fifo_is_empty(void)
+{
+  return _qsize == 0 ? true : false;
+}
+
+static inline bool
+joystick_fifo_is_full(void)
+{
+  return _qsize >= JOYSTICK_QUEUE_SIZE ? true : false;
+}
+
+static inline void
+joystick_fifo_put(uint8_t buf[3])
+{
+  joystick_status_t*  s = &_queue[_qend];
+
+  if(joystick_fifo_is_full())
+  {
+    NRF_LOG_INFO("XXXXXXX joystick fifo is full");
+    return;
+  }
+
+  s->buf[0] = buf[0];
+  s->buf[1] = buf[1];
+  s->buf[2] = buf[2];
+
+  _qend = (_qend + 1) % JOYSTICK_QUEUE_SIZE;
+  _qsize++;
+}
+
+static inline void
+joystick_fifo_peek(uint8_t buf[3])
+{
+  joystick_status_t*  s = &_queue[_qbeg];
+
+  buf[0] = s->buf[0];
+  buf[1] = s->buf[1];
+  buf[2] = s->buf[2];
+}
+
+static inline void
+joystick_fifo_del_head(void)
+{
+  _qbeg = (_qbeg + 1) % JOYSTICK_QUEUE_SIZE;
+  _qsize--;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -89,12 +161,10 @@ on_joystick_hids_evt(ble_hids_t * p_hids, ble_hids_evt_t * p_evt)
   {
   case BLE_HIDS_EVT_BOOT_MODE_ENTERED:
     NRF_LOG_INFO("entrrering boot mode\r\n");
-    m_in_boot_mode = true;
     break;
 
   case BLE_HIDS_EVT_REPORT_MODE_ENTERED:
     NRF_LOG_INFO("entrrering report mode\r\n");
-    m_in_boot_mode = false;
     break;
 
   case BLE_HIDS_EVT_NOTIF_ENABLED:
@@ -175,86 +245,69 @@ ble_joystick_report(void)
   buf[1] = y;
   buf[2] = buttons;
 
-  if(m_in_boot_mode)
+  if(buf[0] == prev_buf[0] &&
+     buf[1] == prev_buf[1] &&
+     buf[2] == prev_buf[2])
   {
+    // no change. nothing to do
     return;
   }
 
-  if(buf[0] != prev_buf[0] ||
-     buf[1] != prev_buf[1] ||
-     buf[2] != prev_buf[2])
+  prev_buf[0] = buf[0];
+  prev_buf[1] = buf[1];
+  prev_buf[2] = buf[2];
+
+  if(joystick_fifo_is_empty() == false)
   {
+    // this means something is already queued up
+    joystick_fifo_put(buf);
+    return;
+  }
+
+  err_code = ble_hids_inp_rep_send(&m_hids,
+                                     INPUT_REP_STICK_INDEX,
+                                     INPUT_REP_STICK_LEN,
+                                     buf,
+                                     m_conn_handle);
+
+  if(err_code == NRF_ERROR_RESOURCES)
+  {
+    NRF_LOG_INFO("XXXXXXX pausing from direct .....");
+    joystick_fifo_put(buf);
+  }
+  else if(err_code != NRF_SUCCESS)
+  {
+    NRF_LOG_INFO("XXXXXXX error %d from direct.....", err_code);
+  }
+}
+
+static void
+ble_joystick_report_resume(void)
+{
+  uint8_t     buf[3];
+  ret_code_t  err_code = NRF_SUCCESS;
+
+  // NRF_LOG_INFO("XXXXXXXX resuming....");
+  while(joystick_fifo_is_empty() == false)
+  {
+    joystick_fifo_peek(buf);
     err_code = ble_hids_inp_rep_send(&m_hids,
                                      INPUT_REP_STICK_INDEX,
                                      INPUT_REP_STICK_LEN,
                                      buf,
                                      m_conn_handle);
 
-    prev_buf[0] = buf[0];
-    prev_buf[1] = buf[1];
-    prev_buf[2] = buf[2];
-  }
-
-  if(err_code == NRF_ERROR_RESOURCES)
-  {
-    nrf_delay_ms(1);
-    err_code = ble_hids_inp_rep_send(&m_hids,
-        INPUT_REP_STICK_INDEX,
-        INPUT_REP_STICK_LEN,
-        buf,
-        m_conn_handle);
-
     if(err_code == NRF_ERROR_RESOURCES)
     {
-      NRF_LOG_INFO("XXXXXXXXX  err : %x\r\n", err_code);
+      NRF_LOG_INFO("XXXXXXX pausing from queue.....");
       return;
     }
-  }
-
-
-#if 0
-  NRF_LOG_INFO("x: %d, y: %d: btn: %x\n", x, y, buttons);
-  {
-    static int cnt = 0;
-
-    cnt++;
-    if(cnt >= 200)
+    else if(err_code != NRF_SUCCESS)
     {
-      NRF_LOG_INFO("1: %d %d %d %d\n",
-          _joystick_pin_status[0],
-          _joystick_pin_status[1],
-          _joystick_pin_status[2],
-          _joystick_pin_status[3]);
-      NRF_LOG_INFO("2: %d %d %d %d\n",
-          _joystick_pin_status[4],
-          _joystick_pin_status[5],
-          _joystick_pin_status[6],
-          _joystick_pin_status[7]);
-      NRF_LOG_INFO("3: %d %d\n",
-          _joystick_pin_status[8],
-          _joystick_pin_status[9]);
-      cnt = 0;
+      NRF_LOG_INFO("XXXXXXX error %d from queue.....", err_code);
     }
+    joystick_fifo_del_head();
   }
-#endif
-
-#if 0
-  if ((err_code != NRF_SUCCESS) &&
-      (err_code != NRF_ERROR_INVALID_STATE) &&
-      (err_code != NRF_ERROR_RESOURCES) &&
-      (err_code != NRF_ERROR_BUSY) &&
-      (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-     )
-  {
-    NRF_LOG_INFO("ble_joystick_report err : %x\r\n", err_code);
-    //APP_ERROR_HANDLER(err_code);
-  }
-#else
-  if (err_code != NRF_SUCCESS)
-  {
-    NRF_LOG_INFO("ble_joystick_report err : %x\r\n", err_code);
-  }
-#endif
 }
 
 static void
@@ -407,7 +460,20 @@ ble_joystick_service_init(void)
   APP_ERROR_CHECK(err_code);
 
   // start
-  app_timer_start(m_jstick_timer_id, APP_TIMER_TICKS(8), NULL);
+  app_timer_start(m_jstick_timer_id, APP_TIMER_TICKS(5), NULL);
 
+  joystick_fifo_init();
   // app scheduler is initialized in main.c
+}
+
+void
+ble_joystick_service_resume_tx(void)
+{
+  ble_joystick_report_resume();
+}
+
+void
+ble_joystick_disconnected(void)
+{
+  joystick_fifo_init();
 }
